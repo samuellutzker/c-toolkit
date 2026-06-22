@@ -595,14 +595,14 @@ int yr_serialize_copyall(struct yr_ctx *ctx, /*OUT*/ unsigned char **buf, /*OUT*
         memcpy(&len_on_yr, ctx->streamfield_len, sizeof len_on_yr);
         outsize += len_on_yr;
     }
-    unsigned char *dest = (unsigned char *)malloc(outsize);
-    if (!dest) {
+    unsigned char *dest = outsize ? (unsigned char *)malloc(outsize) : NULL;
+    if (outsize && !dest) {
         return -2;
     }
-    const unsigned char *chunk;
     size_t step;
     size_t pos = 0;
     while (pos < outsize) {
+        const unsigned char *chunk;
         if (yr_serialize_getbuf(ctx, &chunk, &step) < 0) {
             free(dest);
             return -3;
@@ -778,7 +778,7 @@ int yr_deserialize_getbuf(struct yr_ctx *ctx, /*OUT*/ unsigned char **buf, /*OUT
 
 int yr_deserialize_copyall(struct yr_ctx *ctx, const unsigned char *buf, size_t len)
 {
-    if (!ctx || !buf) {
+    if (!ctx || (len && !buf)) {
         return -10;
     }
     unsigned char *dest;
@@ -819,6 +819,7 @@ void yr_finish(struct yr_ctx **pctx)
     /* take out the trash */
     yr_buflist_free(&(*pctx)->trash, true);
     yr_buflist_free(&(*pctx)->todo, false);
+    yr_buflist_free(&(*pctx)->members, false);
     free((*pctx)->streambuf);
     free(*pctx);
     *pctx = NULL;
