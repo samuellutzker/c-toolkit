@@ -95,7 +95,6 @@ extern "C" {
 #include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include <arpa/inet.h>
 
 // ------------ types ------------
 
@@ -285,14 +284,16 @@ void yr_finish(struct yr_ctx **pctx);
 
 // ------------ implementation ------------
 
+static inline uint16_t yr_hton16(uint16_t x) { unsigned char b[2]={(unsigned char)(x>>8),(unsigned char)x}; uint16_t r; memcpy(&r,b,sizeof r); return r; }
+static inline uint32_t yr_hton32(uint32_t x) { unsigned char b[4]={(unsigned char)(x>>24),(unsigned char)(x>>16),(unsigned char)(x>>8),(unsigned char)x}; uint32_t r; memcpy(&r,b,sizeof r); return r; }
+static inline uint64_t yr_hton64(uint64_t x) { unsigned char b[8]={(unsigned char)(x>>56),(unsigned char)(x>>48),(unsigned char)(x>>40),(unsigned char)(x>>32),(unsigned char)(x>>24),(unsigned char)(x>>16),(unsigned char)(x>>8),(unsigned char)x}; uint64_t r; memcpy(&r,b,sizeof r); return r; }
+#define yr_ntoh16 yr_hton16
+#define yr_ntoh32 yr_hton32
+#define yr_ntoh64 yr_hton64
 #define noop(y) y
 #define error(...) fprintf(stderr, __VA_ARGS__)
-#define yr_enum_fn htons
-#define yr_size_fn htonl
-#ifndef htonll
-#define htonll(x) (htonl(1) == 1 ? (x) : (((uint64_t)htonl((x) & 0xffffffff) << 32) | htonl((x) >> 32)))
-#define ntohll(x) (ntohl(1) == 1 ? (x) : (((uint64_t)ntohl((x) & 0xffffffff) << 32) | ntohl((x) >> 32)))
-#endif
+#define yr_enum_fn yr_hton16
+#define yr_size_fn yr_hton32
 
 #define YR_IO(type,fn,dst,src,inc)  \
 {                                   \
@@ -441,17 +442,17 @@ static int yr_write_member(struct yr_ctx *ctx, const struct yr_member *member, s
             break;
         case YR_INT16:
         case YR_UINT16:
-            YR_IO(uint16_t, htons, ctx->curser, field, ctx->curser);
+            YR_IO(uint16_t, yr_hton16, ctx->curser, field, ctx->curser);
             break;
         case YR_INT32:
         case YR_UINT32:
         case YR_FLOAT32:
-            YR_IO(uint32_t, htonl, ctx->curser, field, ctx->curser);
+            YR_IO(uint32_t, yr_hton32, ctx->curser, field, ctx->curser);
             break;
         case YR_INT64:
         case YR_UINT64:
         case YR_FLOAT64:
-            YR_IO(uint64_t, htonll, ctx->curser, field, ctx->curser);
+            YR_IO(uint64_t, yr_hton64, ctx->curser, field, ctx->curser);
             break;
         case YR_ENUM:
             YR_IO(yr_enum_t, yr_enum_fn, ctx->curser, field, ctx->curser);
@@ -633,17 +634,17 @@ static int yr_read_member(struct yr_ctx *ctx, const struct yr_member *member, si
             break;
         case YR_INT16:
         case YR_UINT16:
-            YR_IO(uint16_t, ntohs, field, ctx->curser, ctx->curser);
+            YR_IO(uint16_t, yr_ntoh16, field, ctx->curser, ctx->curser);
             break;
         case YR_INT32:
         case YR_UINT32:
         case YR_FLOAT32:
-            YR_IO(uint32_t, ntohl, field, ctx->curser, ctx->curser);
+            YR_IO(uint32_t, yr_ntoh32, field, ctx->curser, ctx->curser);
             break;
         case YR_INT64:
         case YR_UINT64:
         case YR_FLOAT64:
-            YR_IO(uint64_t, ntohll, field, ctx->curser, ctx->curser);
+            YR_IO(uint64_t, yr_ntoh64, field, ctx->curser, ctx->curser);
             break;
         case YR_ENUM:
             YR_IO(yr_enum_t, yr_enum_fn, field, ctx->curser, ctx->curser);

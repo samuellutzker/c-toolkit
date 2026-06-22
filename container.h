@@ -5,9 +5,6 @@
  * @file container.h
  * @brief @ref container.h A collection of dynamic container types (vector, dynamic ringbuffer, unrolled linked list, ...)
  */
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE
-#endif
 #include <string.h>
 #include <stdlib.h>
 #include <stddef.h>
@@ -308,7 +305,7 @@ enum con_result vec_find(vec *v, void *e, size_t *pos)
 
 enum con_result vec_alloc(vec *v, size_t min_cap)
 {
-    min_cap = min_cap ?: CON_STD_VEC_CAP;
+    min_cap = min_cap ? min_cap : CON_STD_VEC_CAP;
     v->len = 0;
     v->cap = min_cap;
     v->min_cap = min_cap;
