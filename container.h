@@ -597,7 +597,6 @@ typedef struct ulist {
     ulsize_t len;
     struct ulist *next; /* NULL at the tail */
     struct ulist *prev; /* this one is circular for quick tail access */
-    struct ulist **head;
 } ulist;
 
 /**
@@ -634,15 +633,15 @@ typedef struct ulist {
 /**
  *  @brief Deletes a list, releasing all memory.
  *
- *  @param[in] l list
+ *  @param[in] h pointer to the list head
  *  @param[in] freefn (optional, may be NULL) function to free elements
  */
-void ulist_clear(ulist *l, void (*freefn)(void *));
+void ulist_free(ulist **h, void (*freefn)(void *));
 
 /**
  *  @brief Retrieves the list element at the specified index.
  *
- *  @param[in] l list
+ *  @param[in] l list head
  *  @param[in] i index
  *  @param[in] back search backwards (this is O(n), so worth the effort)
  *  @return container element, or CON_NOTHING if out of bounds
@@ -652,23 +651,23 @@ void *ulist_at(ulist *l, size_t i, bool back);
 /**
  *  @brief Retrieves and removes the last element of the list.
  *
- *  @param[in] l list
+ *  @param[in] h pointer to the list head
  *  @return list element, or CON_NOTHING if list is empty (then l == NULL)
  */
-void *ulist_popback(ulist *l);
+void *ulist_popback(ulist **h);
 
 /**
  *  @brief Retrieves and removes the first element of the list.
  *
- *  @param[in] l list
+ *  @param[in] h pointer to the list head
  *  @return list element, or CON_NOTHING if list is empty (then l == NULL)
  */
-void *ulist_popfront(ulist *l);
+void *ulist_popfront(ulist **h);
 
 /**
  *  @brief Checks if given data exists in the list.
  *
- *  @param[in] l list
+ *  @param[in] l list head
  *  @param[in] e data
  *  @retval true e exists in l
  *  @retval false e does not occur in l
@@ -678,8 +677,8 @@ bool ulist_contains(ulist *l, void *e);
 /**
  *  @brief Checks two given lists for equality.
  *
- *  @param[in] l1 list
- *  @param[in] l2 other list
+ *  @param[in] l1 list (head)
+ *  @param[in] l2 other list (head)
  *  @retval true lists have the same elements
  *  @retval false lists differ
  */
@@ -699,7 +698,7 @@ enum con_result ulist_insert(ulist **h, size_t i, bool back, void *e);
 /**
  *  @brief Determines the length of a given list.
  *
- *  @param[in] l list
+ *  @param[in] l list head
  *  @return length of the list
  */
 size_t ulist_len(ulist *l);
@@ -707,31 +706,31 @@ size_t ulist_len(ulist *l);
 /**
  *  @brief Removes and retrieves data at the given index.
  *
- *  @param[in] l list
+ *  @param[in] h pointer to the list head
  *  @param[in] i index of the element
  *  @param[in] back search backwards (this is O(n), so worth the effort)
  *  @return list element, or CON_NOTHING if list is empty (then l == NULL)
  */
-void *ulist_pop(ulist *l, size_t i, bool back);
+void *ulist_pop(ulist **h, size_t i, bool back);
 
 /**
  *  @brief Deletes all list element that match the given data.
  *
- *  @param[in] l list
+ *  @param[in] h pointer to the list head
  *  @param[in] e data to match
  *  @param[in] freefn (optional, may be NULL) function to free elements
  */
-void ulist_delete(ulist *l, void *e, void (*freefn)(void *e));
+void ulist_delete(ulist **h, void *e, void (*freefn)(void *e));
 
 /**
  *  @brief Deletes all list elements for which filterfn(..) returns false.
  *
- *  @param[in] l pointer to a container
+ *  @param[in] h pointer to the list head
  *  @param[in] filterfn filter-function which receives the value and index plus optional callback data
  *  @param[in] cbdata optional callback data to pass to filterfn
  *  @param[in] freefn (optional, may be NULL) function to free elements
  */
-void ulist_filter(ulist *l, bool (*filterfn)(void *e, size_t i, void *cbdata), void *cbdata, void (*freefn)(void *e));
+void ulist_filter(ulist **h, bool (*filterfn)(void *e, size_t i, void *cbdata), void *cbdata, void (*freefn)(void *e));
 
 #ifdef CON_IMPLEMENT
 
@@ -761,11 +760,11 @@ void *ulist_at(ulist *l, size_t i, bool back)
 {
     if (!l) return CON_NOTHING;
     if (back) {
-        for (l = (*l->head)->prev; l != *l->head && i >= l->len; i -= l->len, l = l->prev)
+        for (l = l->prev; l && l->prev->next && i >= l->len; i -= l->len, l = l->prev)
             ;
         return i < l->len ? l->data[l->len - i - 1] : CON_NOTHING;
     }
-    for (l = *l->head; l && i >= l->len; i -= l->len, l = l->next)
+    for (; l && i >= l->len; i -= l->len, l = l->next)
         ;
     return l && i < l->len ? l->data[i] : CON_NOTHING;
 }
@@ -773,7 +772,7 @@ void *ulist_at(ulist *l, size_t i, bool back)
 bool ulist_equal(ulist *l1, ulist *l2)
 {
     if (!l1 || !l2) return !l1 && !l2;
-    for (l1 = *l1->head, l2 = *l2->head; l1 && l2; l1 = l1->next, l2 = l2->next) {
+    for (; l1 && l2; l1 = l1->next, l2 = l2->next) {
         if (l1->len != l2->len) return false;
         for (size_t i = 0; i < l1->len; ++i) {
             if (l1->data[i] != l2->data[i]) return false;
@@ -782,10 +781,10 @@ bool ulist_equal(ulist *l1, ulist *l2)
     return !l1 && !l2;
 }
 
-void ulist_clear(ulist *l, void (*freefn)(void *))
+void ulist_free(ulist **h, void (*freefn)(void *))
 {
-    if (!l) return;
-    for (ulist **h = l->head; l; l = *h) {
+    if (!h) return;
+    for (ulist *l = *h; l; l = *h) {
         *h = l->next;
         if (freefn) {
             for (ulsize_t i = 0; i < l->len; ++i) {
@@ -796,47 +795,49 @@ void ulist_clear(ulist *l, void (*freefn)(void *))
     }
 }
 
-static ulist *ul_free_getnext(ulist *l)
+static ulist *ul_free_getnext(ulist **h, ulist *l)
 {
     con_debug("freeing");
     ulist *n = l->next;
     if (n) {
         n->prev = l->prev;
     } else {
-        (*l->head)->prev = l->prev;
+        (*h)->prev = l->prev;
     }
-    if (l != *l->head) {
+    if (l != *h) {
         l->prev->next = n;
     } else {
-        *l->head = n;
+        *h = n;
     }
     free(l);
     return n;
 }
 
-void *ulist_popback(ulist *l)
+void *ulist_popback(ulist **h)
 {
-    if (!l) return CON_NOTHING;
+    if (!h || !*h) return CON_NOTHING;
+    ulist *l = *h;
     void *e = ulist_at(l, 0, true);
     if (--l->prev->len == 0) {
-        (void)ul_free_getnext(l->prev);
+        (void)ul_free_getnext(h, l->prev);
     }
     return e;
 }
 
-void *ulist_popfront(ulist *l)
+void *ulist_popfront(ulist **h)
 {
-    if (!l) return CON_NOTHING;
+    if (!h || !*h) return CON_NOTHING;
+    ulist *l = *h;
     void *e = ulist_at(l, 0, false);
     if (--l->len == 0) {
-        (void)ul_free_getnext(l);
+        (void)ul_free_getnext(h, l);
     } else {
         memmove(l->data, l->data + 1, l->len * sizeof(void*));
     }
     return e;
 }
 
-static size_t ulist_maybe_merge(ulist *l, size_t pos, bool (*filterfn)(void *e, size_t i, void *cbdata), void *cbdata, void (*freefn)(void *e))
+static size_t ulist_maybe_merge(ulist **h, ulist *l, size_t pos, bool (*filterfn)(void *e, size_t i, void *cbdata), void *cbdata, void (*freefn)(void *e))
 {
     size_t shift = 0; // the shift of the next segment
     if (l->len && l->len < MERGE_AT && l->next) {
@@ -851,7 +852,7 @@ static size_t ulist_maybe_merge(ulist *l, size_t pos, bool (*filterfn)(void *e, 
                 l->data[l->len++] = n->data[shift];
             }
             if (++shift >= n->len) {
-                n = ul_free_getnext(n);
+                n = ul_free_getnext(h, n);
                 shift = 0;
             }
         }
@@ -859,14 +860,14 @@ static size_t ulist_maybe_merge(ulist *l, size_t pos, bool (*filterfn)(void *e, 
     return shift;
 }
 
-void ulist_filter(ulist *l, bool (*filterfn)(void *e, size_t i, void *cbdata), void *cbdata, void (*freefn)(void *e))
+void ulist_filter(ulist **h, bool (*filterfn)(void *e, size_t i, void *cbdata), void *cbdata, void (*freefn)(void *e))
 {
-    if (!l || !filterfn) return;
+    if (!h || !*h || !filterfn) return;
 
     size_t j = 0;
     size_t pos = 0;
 
-    for (l = *l->head; l; l = l->len ? l->next : ul_free_getnext(l)) {
+    for (ulist *l = *h; l; l = l->len ? l->next : ul_free_getnext(h, l)) {
         for (size_t i = j; i < l->len; ++i) {
             if (!filterfn(l->data[i], pos++, cbdata)) {
                 if (freefn) {
@@ -878,27 +879,31 @@ void ulist_filter(ulist *l, bool (*filterfn)(void *e, size_t i, void *cbdata), v
             }
         }
         l->len -= j;
-        j = ulist_maybe_merge(l, pos, filterfn, cbdata, freefn);
+        j = ulist_maybe_merge(h, l, pos, filterfn, cbdata, freefn);
     }
 }
 
-void *ulist_pop(ulist *l, size_t i, bool back)
+void *ulist_pop(ulist **h, size_t i, bool back)
 {
-    if (!l) return CON_NOTHING;
+    if (!h || !*h) return CON_NOTHING;
+    ulist *l = *h;
     if (back) {
-        for (l = (*l->head)->prev; l != *l->head && i >= l->len; i -= l->len, l = l->prev)
+        for (l = l->prev; l != *h && i >= l->len; i -= l->len, l = l->prev)
             ;
         if (i >= l->len) return CON_NOTHING;
         i = l->len - 1 - i;
     } else {
-        for (l = *l->head; l && i >= l->len; i -= l->len, l = l->next)
+        for (; l && i >= l->len; i -= l->len, l = l->next)
             ;
         if (!l || i >= l->len) return CON_NOTHING;
     }
     void *out = l->data[i];
     memmove(l->data + i, l->data + i + 1, (l->len - i - 1) * sizeof(void*));
-    if (--l->len == 0) (void)ul_free_getnext(l);
-    size_t shift = ulist_maybe_merge(l, l->len, filter_nothing, NULL, NULL);
+    if (--l->len == 0) {
+        (void)ul_free_getnext(h, l);
+        return out;
+    }
+    size_t shift = ulist_maybe_merge(h, l, l->len, filter_nothing, NULL, NULL);
     l = l->next;
     if (l && shift) {
         l->len -= shift;
@@ -907,9 +912,9 @@ void *ulist_pop(ulist *l, size_t i, bool back)
     return out;
 }
 
-void ulist_delete(ulist *l, void *e, void (*freefn)(void *e))
+void ulist_delete(ulist **h, void *e, void (*freefn)(void *e))
 {
-    ulist_filter(l, filter_delete, e, freefn);
+    ulist_filter(h, filter_delete, e, freefn);
 }
 
 enum con_result ulist_insert(ulist **h, size_t i, bool back, void *e)
@@ -919,7 +924,6 @@ enum con_result ulist_insert(ulist **h, size_t i, bool back, void *e)
         if (i) return CON_FAIL;
         *h = (ulist *)calloc(1, sizeof(ulist));
         if (!*h) return CON_FAIL;
-        (*h)->head = h;
         (*h)->prev = *h;
     }
     ulist *l = back ? (*h)->prev : *h;
@@ -946,7 +950,6 @@ enum con_result ulist_insert(ulist **h, size_t i, bool back, void *e)
         }
         l->next = p;
         p->prev = l;
-        p->head = h;
         ulsize_t s = l->len / 2;
         if (i >= s) {
             memcpy(p->data, l->data + s, sizeof(*p->data) * (i - s));
@@ -1001,10 +1004,10 @@ static void *test_action(vec *v, rbuf *rb, ulist **ul, int dtype, int rand1, int
         }
     } else {
         switch (action) {
-            case 0: e = ulist_pop(*ul, rand2 % (1 + ulist_len(*ul)), false); break;
-            case 1: ulist_delete(*ul, e, NULL); break;
-            case 2: e = ulist_popback(*ul); break;
-            case 3: e = ulist_popfront(*ul); break;
+            case 0: e = ulist_pop(ul, rand2 % (1 + ulist_len(*ul)), false); break;
+            case 1: ulist_delete(ul, e, NULL); break;
+            case 2: e = ulist_popback(ul); break;
+            case 3: e = ulist_popfront(ul); break;
             case 4 ... 5: ulist_append(ul, e); break;
             case 6 ... 7: ulist_prepend(ul, e); break;
         }
@@ -1014,7 +1017,8 @@ static void *test_action(vec *v, rbuf *rb, ulist **ul, int dtype, int rand1, int
 static bool test_consistency(void)
 {
     const int test_iters = 10000;
-
+    const int test_compare_after = 1;
+    bool ok = false;
     ulist *ul = NULL;
     rbuf rb;
     vec v;
@@ -1028,33 +1032,43 @@ static bool test_consistency(void)
         void *r0 = test_action(&v, &rb, &ul, 0, rand1, rand2);
         void *r1 = test_action(&v, &rb, &ul, 1, rand1, rand2);
         void *r2 = test_action(&v, &rb, &ul, 2, rand1, rand2);
-        if (r0 != r1 || r1 != r2) {
-            con_out("FAIL: return of action %d inconsistent (vec[len=%zu]=%p, rbuf[len=%zu]=%p, ulist[len=%zu]=%p).\n", rand1, v.len, r0, rb.len, r1, ulist_len(ul), r2);
-            return false;
+        size_t j = 0;
+        if (r0 != r1 || r1 != r2 || v.len != rb.len || v.len != ulist_len(ul)) {
+            con_out("FAIL: return of action %d or length inconsistent (vec[len=%zu]=%p, rbuf[len=%zu]=%p, ulist[len=%zu]=%p).\n", rand1, v.len, r0, rb.len, r1, ulist_len(ul), r2);
+            goto end;
+        }
+        if (0 == i % test_compare_after) {
+            vec_foreach(v, void*, el) {
+                if (rbuf_at(rb, j) != el) {
+                    con_out("FAIL: rbuf != vec at %zu. %p != %p.\n", j, rbuf_at(rb, j), el);
+                    goto end;
+                }
+                ++j;
+            }
+            j = 0;
+            rbuf_foreach(rb, void*, el) {
+                if (ulist_at(ul, j, false) != el) {
+                    con_out("FAIL: ulist != rbuf at %zu. %p != %p\n", j, ulist_at(ul, j, false), el);
+                    goto end;
+                }
+                ++j;
+            }
+            j = 0;
+            ulist_foreach(ul, void*, el) {
+                if (vec_at(v, j) != el) {
+                    con_out("FAIL: vec != ulist at %zu. %p != %p\n", j, vec_at(v, j), el);
+                    goto end;
+                }
+                ++j;
+            }
         }
     }
-    size_t i = 0;
-    vec_foreach(v, void*, el) {
-        if (rbuf_at(rb, i) != el) {
-            con_out("FAIL: rbuf != vec at %zu. %p != %p\n", i, rbuf_at(rb, i), el);
-            return false;
-        }
-        ++i;
-    }
-    i = 0;
-    vec_foreach(v, void*, el) {
-        if (ulist_at(ul, i, false) != el) {
-            con_out("FAIL: vec != ulist at %zu. %p != %p\n", i, ulist_at(ul, i, false), el);
-            return false;
-        }
-        i++;
-    }
-
-    ulist_clear(ul, NULL);
+    ok = true;
+end:
+    ulist_free(&ul, NULL);
     vec_free(&v, NULL);
-    rbuf_clear(&rb, NULL);
-
-    return true;
+    rbuf_free(&rb, NULL);
+    return ok;
 }
 
 static void wait_fullsec(void)
@@ -1091,9 +1105,9 @@ static bool test_speed(void)
     for (ulist *i = ul; i; i = i->next) ul_bytes += sizeof(ulist);
     con_out("num_elements: vec=%zu, rbuf=%zu, ulist=%zu.\n", v.len, rb.len, ulist_len(ul));
     con_out("num_bytes: vec=%zu, rbuf=%zu, ulist=%zu.\n", sizeof(vec) + v.cap * sizeof(*v.data), sizeof(rbuf) + rb.cap * sizeof(*rb.data), ul_bytes);
-    ulist_clear(ul, NULL);
+    ulist_free(&ul, NULL);
     vec_free(&v, NULL);
-    rbuf_clear(&rb, NULL);
+    rbuf_free(&rb, NULL);
 
     return true;
 }
