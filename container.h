@@ -48,7 +48,9 @@ inline static bool filter_delete(void *e, size_t i, void *cbdata)
 
 // ------- dynamic vector -------
 
+#ifndef CON_STD_VEC_CAP
 #define CON_STD_VEC_CAP 64
+#endif
 
 /**
  * @brief Dynamic vector
@@ -327,7 +329,9 @@ void vec_clear(vec *v, void (*freefn)(void *))
 
 // ------- dynamic ringbuffer ------
 
+#ifndef CON_STD_RBUF_CAP
 #define CON_STD_RBUF_CAP 64
+#endif
 
 /**
  * @brief Dynamic ringbuffer
@@ -585,7 +589,9 @@ void rbuf_clear(rbuf *v, void (*freefn)(void *))
 
 // ------- unrolled linked list -------
 
+#ifndef CON_ULIST_ARRSIZE
 #define CON_ULIST_ARRSIZE 256
+#endif
 
 typedef uint16_t ulsize_t;
 
