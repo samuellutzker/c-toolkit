@@ -471,7 +471,7 @@ static int yr_write_member(struct yr_ctx *ctx, const struct yr_member *member, s
             break;
         case YR_STRING:
             memcpy(&str, field, sizeof str);
-            len = strlen(str);
+            len = str ? strlen(str) : 0;
             YR_IO(yr_size_t, yr_size_fn, ctx->curser, &len, ctx->curser);
             ctx->ser_buffers_len += len;
             if (yr_buflist_pushback(&ctx->todo, (void *)str, len) < 0) {
@@ -759,6 +759,11 @@ int yr_deserialize_getbuf(struct yr_ctx *ctx, /*OUT*/ unsigned char **buf, /*OUT
     do {
         rc = yr_buflist_popfront(&ctx->todo, &vbuf, len);
     } while (!rc && !*len);
+    if (rc > 0 && !ctx->container_ready) {
+        /* to-do list cleared, but the outer container hasn't been fully populated */
+        return yr_deserialize_getbuf(ctx, buf, len, streambuf_len);
+    }
+
     *buf = vbuf;
     if (rc > 0 && ctx->streamfield) {
         free(ctx->streambuf);
