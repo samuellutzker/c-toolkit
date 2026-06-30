@@ -185,7 +185,7 @@ struct yr_ctx {
  *
  *  @return     a serialization context or NULL on error
  */
-struct yr_ctx *yr_serialize(const yr_proto_t *proto, void *input);
+struct yr_ctx *yr_serialize(const yr_proto_t *proto, const void *input);
 
 /**
  *  @brief Retrieves the next (serialized) buffer for sending.
@@ -529,7 +529,7 @@ static int yr_write_container(struct yr_ctx *ctx, const yr_proto_t *proto, size_
     return 0;
 }
 
-struct yr_ctx *yr_serialize(const yr_proto_t *proto, void *input)
+struct yr_ctx *yr_serialize(const yr_proto_t *proto, const void *input)
 {
     size_t offs;
     void *vbuf;
